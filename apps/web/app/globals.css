@@ -1,0 +1,100 @@
+@import "tailwindcss";
+
+/* Perennial design tokens. Tailwind v4's CSS-native @theme replaces the old JS config. */
+@theme {
+  --color-obsidian: #08080a;
+  --color-onyx: #040406;
+  --color-carbon: #121317;
+  --color-graphite: #1c1d22;
+  --color-slate: #2e3038;
+  --color-smoke: #464853;
+  --color-ash: #5e616e;
+  --color-steel: #777a88;
+  --color-fog: #9194a1;
+  --color-mist: #acafb9;
+  --color-silver: #c7c9d1;
+  --color-bone: #e2e3e9;
+  --color-copper: #cc9166;
+  --color-sage: #a4be9a;
+  --color-error: #ffb4ab;
+  --color-primary: #ffffff;
+
+  --font-display: "Playfair Display", serif;
+  --font-body: "Inter", sans-serif;
+
+  --text-display: 88px;
+  --text-display--line-height: 1;
+  --text-display--letter-spacing: 0.88px;
+  --text-headline-lg: 64px;
+  --text-headline-lg--line-height: 1.13;
+  --text-headline-lg--letter-spacing: 0.64px;
+  --text-headline-lg-mobile: 44px;
+  --text-headline-lg-mobile--line-height: 1.2;
+  --text-headline-lg-mobile--letter-spacing: 0.44px;
+  --text-heading: 52px;
+  --text-heading--line-height: 1.13;
+  --text-heading--letter-spacing: 0.52px;
+  --text-subheading: 24px;
+  --text-subheading--line-height: 1;
+  --text-subheading--letter-spacing: -0.31px;
+  --text-body-lg: 20px;
+  --text-body-lg--line-height: 1.38;
+  --text-body-lg--letter-spacing: -0.8px;
+  --text-body-sm: 18px;
+  --text-body-sm--line-height: 1.38;
+  --text-body-sm--letter-spacing: -0.36px;
+  --text-body-xs: 16px;
+  --text-body-xs--line-height: 1.5;
+  --text-eyebrow: 13px;
+  --text-eyebrow--line-height: 1;
+  --text-eyebrow--letter-spacing: -0.26px;
+
+  --radius-lg: 10px;
+  --radius-full: 9999px;
+
+  --spacing-section-gap: 160px;
+  --spacing-card-padding: 24px;
+  --spacing-max-width: 1216px;
+}
+
+body {
+  background: var(--color-obsidian);
+  color: var(--color-bone);
+}
+
+.gilded-bg {
+  background: linear-gradient(103deg, #cc9166 0%, #f5e6d3 100%);
+}
+
+.gilded-text {
+  background: linear-gradient(103deg, #cc9166 0%, #f5e6d3 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+@keyframes delta-fade {
+  0% {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  15% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-delta {
+  animation: delta-fade 2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transition-width {
+    transition: none !important;
+  }
+}
