@@ -2,6 +2,8 @@
 
 Self-funding storage on Shelby. Blobs that pay their own rent from the revenue their own reads generate.
 
+**Live demo: [perennial-demo.vercel.app](https://perennial-demo.vercel.app)** — reads live Aptos devnet state, and the buttons submit real transactions. Crediting a read moves actual funds into a blob's vault and the runway meter moves with it.
+
 ## The idea
 
 Storage today is prepaid: you pay upfront, and if you stop paying, the data dies, regardless of whether anyone still wants it. Perennial flips that. Every stored blob gets its own on-chain endowment. Every read generates revenue, and that revenue is split three ways: rent first (so the blob renews itself), then a cut to the creator, then a cut to the protocol. A blob that gets read enough eventually earns more than its own upkeep costs and becomes self-sustaining, permanently, with no one needing to pay for it again. A blob nobody reads burns down its endowment and expires.
