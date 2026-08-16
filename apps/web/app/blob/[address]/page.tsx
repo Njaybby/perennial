@@ -1,7 +1,7 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
-import { LIFECYCLE_STATES } from "@perennial/core";
+import { LIFECYCLE_STATES } from "@perennial/core/types";
 import { RunwayMeter } from "../../components/RunwayMeter";
 import { StatusBadge } from "../../components/StatusBadge";
 

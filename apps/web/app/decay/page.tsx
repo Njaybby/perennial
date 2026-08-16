@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { LIFECYCLE_STATES } from "@perennial/core";
+import { LIFECYCLE_STATES } from "@perennial/core/types";
 import { fmtDuration } from "../components/RunwayMeter";
 import { StatusBadge } from "../components/StatusBadge";
 

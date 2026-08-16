@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { LIFECYCLE_STATES } from "@perennial/core";
+import { LIFECYCLE_STATES } from "@perennial/core/types";
 import { RunwayMeter } from "./components/RunwayMeter";
 
 const STATE_POLL_MS = 2000;
