@@ -1,0 +1,67 @@
+{
+  "priceScale": "1000000000000",
+  "cases": [
+    {
+      "name": "tiny blob nonzero burn",
+      "sizeBytes": "1",
+      "durationSecs": "1",
+      "pricePerBytePerSec": "1",
+      "expectedCost": "1",
+      "expectedBurnPerSec": "1"
+    },
+    {
+      "name": "zero price never aborts",
+      "sizeBytes": "1000000",
+      "durationSecs": "86400",
+      "pricePerBytePerSec": "0",
+      "expectedCost": "0",
+      "expectedBurnPerSec": "0"
+    },
+    {
+      "name": "1MB blob at 1e-12 per byte-sec for 90 days",
+      "sizeBytes": "1000000",
+      "durationSecs": "7776000",
+      "pricePerBytePerSec": "1000000000000",
+      "expectedCost": "7776000000000",
+      "expectedBurnPerSec": "1000000"
+    },
+    {
+      "name": "rounds up on remainder",
+      "sizeBytes": "3",
+      "durationSecs": "1",
+      "pricePerBytePerSec": "333333333333",
+      "expectedCost": "1",
+      "expectedBurnPerSec": "1"
+    }
+  ],
+  "runwayCases": [
+    {
+      "name": "balance covers exactly ten seconds",
+      "balance": "10",
+      "sizeBytes": "1",
+      "pricePerBytePerSec": "1000000000000",
+      "expectedRunwaySecs": "10"
+    },
+    {
+      "name": "zero burn returns MAX_U64",
+      "balance": "500",
+      "sizeBytes": "0",
+      "pricePerBytePerSec": "1000000000000",
+      "expectedRunwaySecs": "18446744073709551615"
+    }
+  ],
+  "splitCases": [
+    {
+      "name": "safe blob uses configured split, no dust loss",
+      "grossAmount": "10007",
+      "split": { "rentBps": "7000", "creatorBps": "2750", "protocolBps": "250" },
+      "expected": { "rent": "7006", "creator": "2751", "protocol": "250" }
+    },
+    {
+      "name": "starved blob routes everything but protocol to rent",
+      "grossAmount": "10000",
+      "split": { "rentBps": "9750", "creatorBps": "0", "protocolBps": "250" },
+      "expected": { "rent": "9750", "creator": "0", "protocol": "250" }
+    }
+  ]
+}
