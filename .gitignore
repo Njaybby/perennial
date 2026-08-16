@@ -1,0 +1,14 @@
+node_modules/
+dist/
+.next/
+next-env.d.ts
+*.log
+.env
+.env.local
+.aptos/
+.move/
+.vendor/
+move/perennial/build/
+*.tsbuildinfo
+PERENNIAL_SPEC.md
+DESIGN.md

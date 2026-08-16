@@ -1,0 +1,31 @@
+{
+  "name": "perennial",
+  "private": true,
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm --filter @perennial/core exec vitest run",
+    "deploy": "tsx scripts/deploy.ts",
+    "seed": "tsx scripts/seed.ts",
+    "demo": "tsx scripts/demo.ts",
+    "reset": "tsx scripts/reset.ts",
+    "web": "pnpm --filter @perennial/web dev"
+  },
+  "dependencies": {
+    "@aptos-labs/ts-sdk": "^1.33.1",
+    "@perennial/adapters": "workspace:*",
+    "@perennial/core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.5.4",
+    "tsx": "^4.16.2",
+    "vitest": "^2.0.5",
+    "@types/node": "^22.5.0"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "sharp"]
+  }
+}

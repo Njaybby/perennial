@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "paths": {
+      "@perennial/core": ["./packages/core/src/index.ts"],
+      "@perennial/adapters": ["./packages/adapters/src/index.ts"]
+    }
+  },
+  "include": ["scripts"]
+}
