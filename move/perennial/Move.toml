@@ -1,0 +1,10 @@
+[package]
+name = "perennial"
+version = "0.1.0"
+authors = []
+
+[addresses]
+perennial = "_"
+
+[dependencies.AptosDeps]
+local = "../../.vendor/aptos-deps"
