@@ -79,5 +79,7 @@ Deletes `.aptos/` (keys, deployment record, seeded blob list) so the next `pnpm 
 pnpm test
 ```
 
-Runs `packages/core`'s vitest suite against `packages/core/fixtures/runway.json`, the runway/split math shared (by fixture, not by code) with `move/perennial/sources/pricing.move` and `endowment.move`. No Move unit tests in the 36 hour build (`aptos move compile` is exercised directly instead). `aptos move test --named-addresses perennial=0x1234` from `move/perennial/` should work once account.move's stubbed `Account` resource doesn't collide with test harness assumptions, not verified under this time budget, flagged here rather than silently skipped.
+Runs `packages/core`'s vitest suite: the runway, cost and split math, checked against `packages/core/fixtures/runway.json` and against the same rounding and threshold behaviour `pricing.move` and `endowment.move` implement. The two sides share fixtures rather than code, so the tests exist to catch them drifting apart.
+
+There are no Move unit tests. `aptos move compile` is exercised directly instead, and the contracts are verified against a live devnet deployment. `aptos move test` would need the compile-only stub in `move/aptos-deps-stubs/account.move` to stop colliding with the test harness's own `Account` resource first, so it's flagged here rather than left looking like it was skipped by accident.
 

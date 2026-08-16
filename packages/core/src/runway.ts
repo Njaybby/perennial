@@ -1,7 +1,8 @@
 /**
- * Runway and split math.
- * Must mirror move/perennial/sources/pricing.move and the split logic in move/perennial/sources/endowment.move exactly, since this is the number the whole product is about, and divergence between the two implementations is the most likely source of a silent bug.
- * See fixtures/runway.json for shared test vectors.
+ * Runway and split math, mirroring pricing.move and the split logic in endowment.move.
+ *
+ * Two implementations of the same arithmetic is a standing risk: if they drift, the interface confidently shows numbers the chain disagrees with.
+ * fixtures/runway.json holds the shared vectors both sides are checked against, and the rounding choices here deliberately match the Move ones rather than being idiomatic TypeScript.
  */
 import type { Split } from "./types.js";
 
@@ -25,6 +26,7 @@ export function cost(sizeBytes: bigint, durationSecs: bigint, pricePerBytePerSec
   return c > MAX_U64 ? MAX_U64 : c;
 }
 
+/** Mirrors pricing::cost_with_cap, kept in step with the deployed module even though nothing calls it yet. */
 export function costWithCap(
   sizeBytes: bigint,
   durationSecs: bigint,
@@ -42,6 +44,7 @@ export function runwaySecs(balance: bigint, sizeBytes: bigint, pricePerBytePerSe
   return balance / bps;
 }
 
+/** The wall-clock second the balance runs out, rather than the seconds remaining. */
 export function runwayAt(nowSecs: bigint, balance: bigint, sizeBytes: bigint, pricePerBytePerSec: bigint): bigint {
   return nowSecs + runwaySecs(balance, sizeBytes, pricePerBytePerSec);
 }
@@ -52,8 +55,8 @@ export interface SplitResolution {
 }
 
 /**
- * Rent has priority until the blob is safe.
- * Matches the waterfall in endowment::credit.
+ * Decides which split applies to a credit, given where the blob's runway sits against its target.
+ * Below target the configured split is discarded and the creator earns nothing until the blob has recovered, matching the override in endowment::credit.
  */
 export function resolveSplit(
   currentRunwaySecs: bigint,

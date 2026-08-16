@@ -3,7 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 
-// apps/web is run as the Next.js cwd, so the repo root is two levels up. See docs/RUNBOOK.md.
+/**
+ * Runs `pnpm demo` as a detached background process so the dashboard can drive a live run.
+ * The demo takes about seven and a half minutes, far longer than any request should stay open, so progress is tracked through a pid file and a log file rather than a held connection.
+ */
 const ROOT = path.resolve(process.cwd(), "../..");
 const PID_PATH = path.join(ROOT, ".aptos/demo-run.pid");
 const LOG_PATH = path.join(ROOT, ".aptos/demo-run.log");
@@ -18,6 +21,7 @@ function isRunning(pid: number): boolean {
   }
 }
 
+/** Returns null for a stale pid file too, so a crashed or killed run doesn't block the next one forever. */
 function currentPid(): number | null {
   if (!fs.existsSync(PID_PATH)) return null;
   const pid = Number(fs.readFileSync(PID_PATH, "utf8").trim());
@@ -47,6 +51,7 @@ export async function POST() {
   fs.mkdirSync(path.dirname(LOG_PATH), { recursive: true });
   const logFd = fs.openSync(LOG_PATH, "w");
 
+  // Detached and unref'd so the run survives this request, and in dev, a hot reload of the route that started it.
   const child = spawn("pnpm", ["demo"], {
     cwd: ROOT,
     detached: true,

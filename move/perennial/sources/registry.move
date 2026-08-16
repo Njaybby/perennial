@@ -1,7 +1,11 @@
-/// Global configuration and the blob index.
-/// Simplified for the 36 hour build: a single authorized gateway address, not a bonded gateway registry (that's `receipts.move` territory, design-only for now, see docs/DECISIONS.md).
-/// Endowment objects are still created under a resource account, not the admin account directly, because `endowment_address` must be a pure function of `blob_id` alone.
-/// Object addresses are derived from (creator_address, seed), so the "creator" of every endowment object has to be a fixed address independent of who actually calls `endowment::seed`.
+/// Global configuration, the blob index, and the resource account every endowment object is created under.
+///
+/// Object addresses in Move derive from (creator_address, seed).
+/// If endowments were created under whoever calls `endowment::seed`, their addresses would depend on the caller, and `endowment_address` could not be a pure function of `blob_id`.
+/// A resource account owned by the package gives every endowment a fixed creator, which is what makes the address derivable off chain without a network round trip.
+///
+/// The gateway is a single address set by admin rather than a bonded, permissionless set.
+/// That is the main thing standing between this and a trust-minimised design. See docs/THREATS.md.
 module perennial::registry {
     use std::signer;
     use aptos_framework::account;
@@ -11,6 +15,7 @@ module perennial::registry {
 
     friend perennial::endowment;
 
+    /// Changing this value moves every endowment address the package would derive, so it is effectively permanent once anything is deployed.
     const RESOURCE_SEED: vector<u8> = b"perennial_v1";
 
     struct Split has store, copy, drop {
@@ -190,6 +195,8 @@ module perennial::registry {
         (s.rent_bps, s.creator_bps, s.protocol_bps)
     }
 
+    /// Pure derivation, no storage read, so off-chain callers can compute a blob's endowment address without querying a node.
+    /// `packages/core/src/address.ts` mirrors this exactly.
     #[view]
     public fun endowment_address(blob_id: vector<u8>): address {
         let resource_addr = account::create_resource_address(&@perennial, RESOURCE_SEED);

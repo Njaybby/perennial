@@ -36,6 +36,9 @@ importers:
       '@aptos-labs/ts-sdk':
         specifier: ^1.33.1
         version: 1.39.0(axios@1.19.0)(got@11.8.6)
+      '@perennial/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       next:
         specifier: ^15.0.0
         version: 15.5.23(react-dom@19.2.8(react@19.2.8))(react@19.2.8)

@@ -1,10 +1,9 @@
 "use client";
 
 import { use, useEffect, useState } from "react";
+import { LIFECYCLE_STATES } from "@perennial/core";
 import { RunwayMeter } from "../../components/RunwayMeter";
 import { StatusBadge } from "../../components/StatusBadge";
-
-const STATE_NAMES = ["Seeded", "Active", "Decaying", "Expired", "Dead", "Archived"];
 
 interface Summary {
   endowmentAddress: string;
@@ -30,7 +29,8 @@ interface BlobEvent {
   type: "seed" | "credit" | "renew" | "top_up" | "claim" | "archive";
   txHash: string;
   atSecs: number;
-  data: any;
+  /** Raw Move event fields, all serialized as strings. Null when the transaction couldn't be re-fetched. */
+  data: Record<string, string> | null;
   success: boolean | null;
 }
 
@@ -45,8 +45,13 @@ function truncate(addr: string): string {
   return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
 }
 
+/** Narrows to events whose on-chain payload was actually recovered, since those are the only ones with numbers to render. */
+function eventsWithData(events: BlobEvent[], type: BlobEvent["type"]): (BlobEvent & { data: Record<string, string> })[] {
+  return events.filter((e): e is BlobEvent & { data: Record<string, string> } => e.type === type && e.data !== null);
+}
+
 function RevenueChart({ events }: { events: BlobEvent[] }) {
-  const credits = events.filter((e) => e.type === "credit" && e.data);
+  const credits = eventsWithData(events, "credit");
   if (credits.length === 0) {
     return <div className="flex-1 flex items-center justify-center text-fog text-body-xs">No credited reads yet.</div>;
   }
@@ -156,10 +161,10 @@ export default function BlobDetailPage({ params }: { params: Promise<{ address: 
   }
 
   const { summary, events, label } = detail;
-  const state = STATE_NAMES[summary.state] ?? "Unknown";
+  const state = LIFECYCLE_STATES[summary.state] ?? "Unknown";
   const runway = Number(summary.runwaySecs);
   const burnPerSec = runway > 0 ? Math.floor(Number(summary.balance) / runway) : 0;
-  const renewals = events.filter((e) => e.type === "renew" && e.data);
+  const renewals = eventsWithData(events, "renew");
 
   return (
     <main className="max-w-(--spacing-max-width) mx-auto px-6 md:px-10 pt-16 pb-24 flex flex-col gap-24">

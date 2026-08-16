@@ -1,13 +1,17 @@
 /**
- * The three demo blobs: seeds three blobs with different read profiles and runs them forward until one dies and one becomes self sustaining.
- * Constants are minutes, not days, since real devnet timestamps are real wall-clock time and the chain won't fast-forward.
+ * Read profiles for the three demo blobs, chosen so a single run shows both ends of the lifecycle.
+ *
+ * Note that cold opens with the largest endowment of the three and still dies, while hot opens with the smallest and thrives.
+ * That is the entire argument: what keeps a blob alive is demand, not how much its creator paid up front.
+ * A renewal costs roughly 950 octas at these settings, so cold's 400 can never buy one, and no amount of waiting changes that without reads.
  */
 export interface BlobProfile {
   label: string;
   sizeBytes: number;
   initialEndowment: number; // octas
-  /** Credits landing on this blob during the demo: [amount octas, every N ticks]. null = never credited. */
+  /** Credit this blob once every N demo ticks. null means it is never read and earns nothing. */
   creditEveryTicks: number | null;
+  /** Gross revenue in octas per credit, before the rent/creator/protocol split. */
   creditAmount: number;
   rentBps: number;
   creatorBps: number;

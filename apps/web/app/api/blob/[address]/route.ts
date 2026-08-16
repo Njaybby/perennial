@@ -10,6 +10,19 @@ interface BlobEvent {
   atSecs: number;
 }
 
+/** Move event payloads arrive as flat records of strings, since u64 and u128 fields are serialized rather than narrowed to JS numbers. */
+type MoveEventData = Record<string, string>;
+
+/** Which emitted event carries the interesting numbers for each kind of logged activity. */
+const EVENT_STRUCT_BY_TYPE: Record<BlobEvent["type"], string> = {
+  seed: "EndowmentSeeded",
+  credit: "RevenueCredited",
+  renew: "Renewed",
+  top_up: "ToppedUp",
+  claim: "CreatorClaimed",
+  archive: "EndowmentArchived",
+};
+
 function loadEventsFor(address: string): BlobEvent[] {
   const p = path.join(ROOT, ".aptos/events.json");
   if (!fs.existsSync(p)) return [];
@@ -17,7 +30,7 @@ function loadEventsFor(address: string): BlobEvent[] {
   return all.filter((e) => e.blobAddress.toLowerCase() === address.toLowerCase()).sort((a, b) => a.atSecs - b.atSecs);
 }
 
-function findEventData(txEvents: { type: string; data: any }[], suffix: string): any | null {
+function findEventData(txEvents: { type: string; data: MoveEventData }[], suffix: string): MoveEventData | null {
   const match = txEvents.find((e) => e.type.endsWith(`::${suffix}`));
   return match ? match.data : null;
 }
@@ -47,17 +60,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ address
   const enriched = await Promise.all(
     logEntries.map(async (entry) => {
       try {
-        const txn: any = await aptos.getTransactionByHash({ transactionHash: entry.txHash });
-        const events = (txn.events ?? []) as { type: string; data: any }[];
-        let data: any = null;
-        if (entry.type === "seed") data = findEventData(events, "EndowmentSeeded");
-        else if (entry.type === "credit") data = findEventData(events, "RevenueCredited");
-        else if (entry.type === "renew") data = findEventData(events, "Renewed");
-        else if (entry.type === "top_up") data = findEventData(events, "ToppedUp");
-        else if (entry.type === "claim") data = findEventData(events, "CreatorClaimed");
-        else if (entry.type === "archive") data = findEventData(events, "EndowmentArchived");
-        return { ...entry, data, success: txn.success };
+        const txn = await aptos.getTransactionByHash({ transactionHash: entry.txHash });
+        // Only committed user transactions carry events; anything else legitimately has none.
+        const events = ("events" in txn ? txn.events : []) as { type: string; data: MoveEventData }[];
+        const data = findEventData(events, EVENT_STRUCT_BY_TYPE[entry.type]);
+        return { ...entry, data, success: "success" in txn ? txn.success : null };
       } catch {
+        // A hash that no longer resolves (a devnet wipe, most likely) shouldn't take down the whole ledger view.
         return { ...entry, data: null, success: null };
       }
     }),

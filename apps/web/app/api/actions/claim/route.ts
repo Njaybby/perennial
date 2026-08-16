@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { appendBlobEvent, loadDeployment, loadSigner, submitEntry } from "../../../lib/chain";
 
 /**
- * `claim_creator` requires the caller to be the endowment's owner (see endowment.move).
- * This build has no wallet connection, so it only works for blobs this deployment's demo
- * `creator` account actually owns, i.e. the seeded demo blobs. See docs/DECISIONS.md.
+ * `claim_creator` is owner-gated on chain, so unlike top_up this genuinely cannot work for an arbitrary visitor without a wallet.
+ * It succeeds here only because the demo's creator account owns the seeded blobs.
  */
 export async function POST(req: Request) {
   const { address } = await req.json();

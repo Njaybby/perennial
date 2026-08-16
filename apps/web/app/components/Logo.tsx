@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-/** The real mark from the design export (public/logo.png), not a guess. White on transparent, made for the dark surfaces. */
+/** White on transparent, intended for the dark surfaces it sits on. */
 export function LogoMark({ className }: { className?: string }) {
   return <Image src="/logo.png" alt="Perennial" width={32} height={32} className={className} unoptimized />;
 }

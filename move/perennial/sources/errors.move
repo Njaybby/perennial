@@ -1,5 +1,6 @@
+/// Abort codes for the whole package, blocked by module so a raw code in a failed transaction says where it came from.
+/// Registry owns 1000, endowment 2000, pricing 5000.
 module perennial::errors {
-    // 1000 registry
     const E_NOT_ADMIN: u64 = 1001;
     const E_PAUSED: u64 = 1002;
     const E_ALREADY_INITIALIZED: u64 = 1003;
@@ -7,7 +8,6 @@ module perennial::errors {
     const E_UNAUTHORIZED_GATEWAY: u64 = 1005;
     const E_NOT_INITIALIZED: u64 = 1006;
 
-    // 2000 endowment
     const E_ENDOWMENT_EXISTS: u64 = 2001;
     const E_NO_ENDOWMENT: u64 = 2002;
     const E_NOT_OWNER: u64 = 2003;
@@ -20,7 +20,6 @@ module perennial::errors {
     const E_BELOW_MIN_ENDOWMENT: u64 = 2010;
     const E_TARGET_RUNWAY_TOO_LOW: u64 = 2011;
 
-    // 5000 pricing
     const E_STALE_PRICE: u64 = 5001;
     const E_PRICE_DEVIATION: u64 = 5002;
 

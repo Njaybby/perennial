@@ -3,8 +3,14 @@
 import { useEffect, useState } from "react";
 import { StatusBadge } from "./StatusBadge";
 
+/**
+ * `pricing::runway_secs` returns u64::MAX when a blob's burn rate rounds to zero, which is effectively infinite runway.
+ * Anything past this threshold is that sentinel rather than a real duration, so it is shown as infinity instead of a nonsense number of years.
+ */
+const EFFECTIVELY_INFINITE_SECS = 3_000_000_000;
+
 export function fmtDuration(secs: number): string {
-  if (!Number.isFinite(secs) || secs > 3_000_000_000) return "∞";
+  if (!Number.isFinite(secs) || secs > EFFECTIVELY_INFINITE_SECS) return "∞";
   if (secs < 0) secs = 0;
   const d = Math.floor(secs / 86400);
   const h = Math.floor((secs % 86400) / 3600);
@@ -15,6 +21,7 @@ export function fmtDuration(secs: number): string {
   return `${m}m ${String(s).padStart(2, "0")}s`;
 }
 
+/** States where the runway number is frozen on chain and must not be animated downward. */
 const TERMINAL_STATES = new Set(["Expired", "Dead", "Archived"]);
 
 export interface RunwayMeterProps {
@@ -27,6 +34,7 @@ export interface RunwayMeterProps {
   href?: string;
 }
 
+/** The fill shows runway against the blob's own target, so a full bar means self-sufficient rather than merely alive. */
 export function RunwayMeter({ label, state, runwaySecs, targetRunwaySecs, burnPerSec, lastDeltaSecs, href }: RunwayMeterProps) {
   const [displaySecs, setDisplaySecs] = useState(runwaySecs);
   const [tick, setTick] = useState(0);
@@ -43,7 +51,7 @@ export function RunwayMeter({ label, state, runwaySecs, targetRunwaySecs, burnPe
   useEffect(() => {
     if (isTerminal) return;
     const id = setInterval(() => {
-      setDisplaySecs((s) => (s > 3_000_000_000 ? s : Math.max(0, s - 1)));
+      setDisplaySecs((s) => (s > EFFECTIVELY_INFINITE_SECS ? s : Math.max(0, s - 1)));
       setTick((t) => t + 1);
     }, 1000);
     return () => clearInterval(id);

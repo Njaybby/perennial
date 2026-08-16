@@ -1,7 +1,6 @@
 /**
- * Uploads the demo blobs to the MockAdapter (standing in for Shelby, see
- * docs/DECISIONS.md) and seeds an on-chain endowment for each. Run
- * standalone (`pnpm seed`) or imported by scripts/demo.ts.
+ * Uploads the three demo blobs to the MockAdapter and seeds an on-chain endowment for each.
+ * Run on its own with `pnpm seed`, or imported by scripts/demo.ts as the first step of a full run.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -30,8 +29,7 @@ export async function seedDemoBlobs(): Promise<SeededBlob[]> {
   const aptos = aptosClient();
   const adapter = new MockAdapter({ owner: accounts.creator.accountAddress.toString() });
 
-  // Fresh demo state: old blob addresses from a previous run aren't reachable from the newly seeded blobs.json below, so their event history is dead weight.
-  // Same lifecycle as blobs.json itself.
+  // Seeding replaces blobs.json wholesale, so any event history for the previous run's blobs is now unreachable and gets cleared with it.
   fs.mkdirSync(path.dirname(EVENTS_PATH), { recursive: true });
   fs.writeFileSync(EVENTS_PATH, "[]");
 
@@ -40,11 +38,12 @@ export async function seedDemoBlobs(): Promise<SeededBlob[]> {
 
   for (const profile of BLOB_PROFILES) {
     const bytes = new Uint8Array(profile.sizeBytes);
+    // getRandomValues rejects requests over 65536 bytes, and the blob's contents don't matter here beyond being distinct, so only the first chunk is randomized.
     crypto.getRandomValues(bytes.subarray(0, Math.min(65536, bytes.length)));
-    // MockAdapter content-addresses by hash; salt with label+run time so re-runs get a fresh blobId.
+    // MockAdapter derives the blobId from content and name, so stamping the run time keeps repeat runs from colliding with an already-seeded endowment.
     const name = `${profile.label}-${nowSecs}.bin`;
 
-    // Must clear renewalLeadSecs (120s) with margin, see scripts/lib/env.ts.
+    // Opens with more runway than one renewal lead, so the first renewal is triggered by the clock rather than by the blob starting out already behind.
     const expiresAtSecs = nowSecs + 240;
     const ref = await adapter.upload(bytes, name, expiresAtSecs);
     const blobIdHex = `0x${Buffer.from(ref.blobId).toString("hex")}`;
@@ -60,8 +59,7 @@ export async function seedDemoBlobs(): Promise<SeededBlob[]> {
       deployment.demoConfig.defaultTargetRunwaySecs,
     ]);
 
-    // Pure and offline, per @perennial/core's address.ts doc comment.
-    // No network round trip, which also sidesteps devnet's public-IP rate limit that a `registry::endowment_address` view call would count against.
+    // Derived locally rather than read back from the chain, which is the whole point of the resource-account addressing in registry.move.
     const endowmentAddress = computeEndowmentAddress(deployment.packageAddress, ref.blobId);
 
     appendEvent({ blobAddress: endowmentAddress, type: "seed", txHash: hash, atSecs: nowSecs });

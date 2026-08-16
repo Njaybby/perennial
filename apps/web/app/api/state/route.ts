@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { fetchBlobSummary, loadBlobs, loadDeployment } from "../../lib/chain";
 
+/**
+ * Current on-chain state for every seeded blob, polled by the dashboard.
+ * Read straight from Move view functions on each request, so what the page shows is the chain rather than a cache that could fall behind it.
+ */
 export async function GET() {
   const deployment = loadDeployment();
   const blobs = loadBlobs();
@@ -12,6 +16,7 @@ export async function GET() {
     );
   }
 
+  // Failures are reported per blob rather than thrown, so one unreadable endowment degrades a single row instead of blanking the dashboard.
   const results = await Promise.all(
     blobs.map(async (blob) => {
       try {

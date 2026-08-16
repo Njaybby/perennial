@@ -1,7 +1,10 @@
 /**
- * In-memory ShelbyAdapter.
- * This is what the entire system develops and demos against while real Shelby access is unavailable.
- * Supports the full interface so callers can be written once and pointed at whichever real adapter eventually lands.
+ * In-memory ShelbyAdapter, and what the system develops and demos against until real Shelby access exists.
+ *
+ * Blobs live for the lifetime of the process only.
+ * That is fine for the demo, where what matters on chain is the blob id, and the endowment keyed to it outlives any local copy of the bytes.
+ *
+ * Latency and failure injection are here so callers can be exercised against a backend that misbehaves, since a real one eventually will.
  */
 import { createHash } from "node:crypto";
 import type { AdapterCapabilities, BlobRef, ByteRange, ShelbyAdapter } from "./ShelbyAdapter.js";
@@ -17,8 +20,9 @@ export interface MockAdapterOptions {
   latencyMs?: number;
   /** Probability in [0, 1] that any given call throws. Default 0. */
   failureRate?: number;
-  /** Fixed-point price per byte per second, scaled by 1e12. Default 1000 (a nominal, not real, quote). */
+  /** Fixed-point price per byte per second, scaled by 1e12. The default is nominal, not a real Shelby quote. */
   pricePerBytePerSecScaled?: bigint;
+  /** Address recorded as the blob owner. Callers that intend to seed an endowment should pass a real one. */
   owner?: string;
 }
 
@@ -47,6 +51,7 @@ export class MockAdapter implements ShelbyAdapter {
     }
   }
 
+  /** Content-addressed, but salted by name so two blobs with identical bytes stay distinguishable. */
   private static idFor(bytes: Uint8Array, salt: string): Uint8Array {
     const hash = createHash("sha3-256");
     hash.update(salt);
@@ -116,6 +121,7 @@ export class MockAdapter implements ShelbyAdapter {
     return (numerator + PRICE_SCALE - 1n) / PRICE_SCALE;
   }
 
+  /** Deliberately permissive so all three renewal paths stay exercisable. A real backend would support one and reject the rest. */
   capabilities(): AdapterCapabilities {
     return { extend: true, recommit: true, successor: true };
   }

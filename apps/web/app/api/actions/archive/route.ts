@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { appendBlobEvent, loadDeployment, loadSigner, submitEntry } from "../../../lib/chain";
 
-/** `archive` requires the caller to be the endowment's owner, same caveat as claim/route.ts. */
+/**
+ * Owner-gated on chain, same wallet caveat as the claim route.
+ * Archiving is terminal and refunds the whole vault, so it's the one demo action that can't be undone by a later top up.
+ */
 export async function POST(req: Request) {
   const { address } = await req.json();
   if (typeof address !== "string") {

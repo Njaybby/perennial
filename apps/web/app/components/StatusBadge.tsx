@@ -1,3 +1,4 @@
+/** Colour carries the meaning here: healthy in sage, at risk in copper, and everything terminal desaturated. */
 const STYLES: Record<string, string> = {
   Seeded: "border-steel text-fog",
   Active: "border-sage/30 bg-sage/10 text-sage",

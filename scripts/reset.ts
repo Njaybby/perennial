@@ -1,17 +1,15 @@
 /**
- * Devnet wipes roughly weekly.
- * This clears local state (accounts, deployment record, seeded blob list) so the next `pnpm run deploy && pnpm seed` starts from nothing, same as after a wipe.
- * On-chain state itself needs no reconstruction in this build.
- * There's no indexer database standing in front of it, design-only for now; the dashboard reads Move view functions directly.
+ * Clears local state (keys, deployment record, seeded blob list) so the next deploy starts from nothing.
+ * Nothing on chain needs rebuilding to match, because the dashboard reads Move view functions directly rather than a database that could drift out of sync.
  */
 import fs from "node:fs";
 import path from "node:path";
 
-const AAPTOS_DIR = path.resolve(process.cwd(), ".aptos");
+const APTOS_DIR = path.resolve(process.cwd(), ".aptos");
 
-if (fs.existsSync(AAPTOS_DIR)) {
-  fs.rmSync(AAPTOS_DIR, { recursive: true, force: true });
-  console.log(`Removed ${AAPTOS_DIR}`);
+if (fs.existsSync(APTOS_DIR)) {
+  fs.rmSync(APTOS_DIR, { recursive: true, force: true });
+  console.log(`Removed ${APTOS_DIR}`);
 } else {
   console.log("Nothing to reset.");
 }

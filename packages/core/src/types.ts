@@ -1,5 +1,7 @@
+/** Shared types for the endowment lifecycle and revenue split, mirroring the shapes the Move modules return. */
 export type BlobIdHex = `0x${string}`;
 
+/** Order is load-bearing: each index is the `u8` state code the contract stores, so entries can be appended but never reordered. */
 export const LIFECYCLE_STATES = [
   "Seeded",
   "Active",
@@ -30,7 +32,10 @@ export function assertValidSplit(split: Split): void {
   }
 }
 
-/** Mirrors endowment::EndowmentView in move/perennial/sources/endowment.move. */
+/**
+ * Mirrors endowment::EndowmentView.
+ * `balance` is spendable only, with creator earnings already netted out, same as the contract reports it.
+ */
 export interface EndowmentView {
   blobId: BlobIdHex;
   endowment: string;
@@ -56,21 +61,4 @@ export interface EndowmentView {
   protocolBps: bigint;
   targetRunwaySecs: bigint;
   runwaySecs: bigint;
-}
-
-/**
- * DOMAIN = "PERENNIAL_READ_RECEIPT_V1"
- * Types defined for forward compatibility with the receipt, Merkle and fraud-proof layer, design only in this build.
- */
-export const RECEIPT_DOMAIN = "PERENNIAL_READ_RECEIPT_V1";
-
-export interface ReadReceiptFields {
-  chainId: number;
-  gatewayAddr: Uint8Array; // 32 bytes
-  blobId: Uint8Array; // 32 bytes
-  epoch: bigint;
-  seq: bigint;
-  bytesServed: bigint;
-  amount: bigint;
-  readerPubkey: Uint8Array; // 32 bytes
 }

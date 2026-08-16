@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import fixtures from "../fixtures/runway.json" with { type: "json" };
-import { applySplit, burnPerSec, cost, runwaySecs } from "./runway.js";
+import { applySplit, burnPerSec, cost, resolveSplit, runwaySecs } from "./runway.js";
 import type { Split } from "./types.js";
 
 describe("cost + burnPerSec", () => {
@@ -51,5 +51,41 @@ describe("applySplit", () => {
       expect(result.rent + result.creator + result.protocol).toBe(gross);
       expect(result.rent).toBeGreaterThanOrEqual(0n);
     }
+  });
+});
+
+describe("resolveSplit", () => {
+  const configured: Split = { rentBps: 7000n, creatorBps: 2750n, protocolBps: 250n };
+  const protocolBps = 250n;
+
+  it("pays the creator normally once the blob is above target runway", () => {
+    const { starved, split } = resolveSplit(600n, 300n, configured, protocolBps);
+    expect(starved).toBe(false);
+    expect(split).toEqual(configured);
+  });
+
+  it("cuts the creator out entirely while the blob is below target runway", () => {
+    const { starved, split } = resolveSplit(100n, 300n, configured, protocolBps);
+    expect(starved).toBe(true);
+    expect(split.creatorBps).toBe(0n);
+    expect(split.rentBps).toBe(10_000n - protocolBps);
+  });
+
+  it("treats exactly-at-target as safe, matching the strict comparison in endowment::credit", () => {
+    expect(resolveSplit(300n, 300n, configured, protocolBps).starved).toBe(false);
+  });
+
+  it("always yields a split totalling 10000 bps", () => {
+    for (const runway of [0n, 1n, 299n, 300n, 301n, 10_000n]) {
+      const { split } = resolveSplit(runway, 300n, configured, protocolBps);
+      expect(split.rentBps + split.creatorBps + split.protocolBps).toBe(10_000n);
+    }
+  });
+
+  it("routes every octa to rent and protocol when starved", () => {
+    const { split } = resolveSplit(0n, 300n, configured, protocolBps);
+    const applied = applySplit(1_000_000n, split);
+    expect(applied.creator).toBe(0n);
+    expect(applied.rent + applied.protocol).toBe(1_000_000n);
   });
 });

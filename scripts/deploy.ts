@@ -1,9 +1,12 @@
 /**
- * Deploys perennial-move to Aptos devnet.
- * Funds the demo accounts, publishes the package (shelled out to the Aptos CLI, which handles compilation and BCS-encoding far more robustly than reimplementing that in TS), then initializes `registry` and `pricing` via the TS SDK.
+ * Publishes move/perennial to Aptos devnet and initializes it.
+ * Funds the four demo accounts, publishes the package, then calls `registry::initialize` and `pricing::init_price`.
  *
- * Idempotent-ish: reuses .aptos/keys.json accounts across runs.
- * Devnet wipes roughly weekly, so a fresh `pnpm run deploy` must always be able to stand the whole system back up from nothing.
+ * Publishing shells out to the Aptos CLI rather than using the SDK, because the CLI already handles Move compilation and BCS encoding of the package metadata.
+ * Everything after publish goes through the SDK.
+ *
+ * Safe to re-run: accounts persist in .aptos/keys.json, and only the publish and init steps repeat.
+ * Devnet wipes roughly weekly, so this has to be able to rebuild the whole deployment from nothing.
  */
 import { execFile } from "node:child_process";
 import path from "node:path";
@@ -15,8 +18,7 @@ import { DEMO_CONFIG, aptosClient, saveDeployment } from "./lib/env.js";
 const execFileAsync = promisify(execFile);
 
 const MOVE_DIR = path.resolve(process.cwd(), "move/perennial");
-// Devnet, not testnet, see the comment in scripts/lib/env.ts.
-// api.devnet, not fullnode.devnet: the Aptos Build gateway that actually honors NODE_API_KEY.
+// api.devnet rather than fullnode.devnet, because only the former is the Aptos Build gateway that honors NODE_API_KEY.
 const FULLNODE_URL = "https://api.devnet.aptoslabs.com/v1";
 const FAUCET_URL = "https://faucet.devnet.aptoslabs.com";
 
@@ -24,8 +26,8 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Devnet's public fullnode rate-limits anonymous IPs, and the Aptos CLI itself carries no retry logic.
-// Same idea as scripts/lib/entry.ts's withRetry, just wrapping the CLI's own error text instead of a typed SDK error.
+// The Aptos CLI has no retry logic of its own, so rate limiting has to be handled around it.
+// Same approach as withRetry in scripts/lib/entry.ts, except the only signal available here is the CLI's error text.
 async function aptosCli(args: string[], maxAttempts = 10): Promise<string> {
   let attempt = 0;
   for (;;) {
@@ -36,7 +38,8 @@ async function aptosCli(args: string[], maxAttempts = 10): Promise<string> {
       const text = String((err as { stdout?: string; message?: string }).stdout ?? (err as Error).message ?? "");
       attempt += 1;
       if (attempt >= maxAttempts || !text.includes("rate limit")) throw err;
-      // Capped, not pure exponential: devnet's public rate limit has shown sustained contention lasting minutes, not seconds, so a few capped-length retries cover more real time than a few huge ones.
+      // Capped rather than pure exponential, because the limit clears on a rolling window of minutes.
+      // Several waits at the cap cover more real time than a few enormous ones.
       const delayMs = Math.min(90_000, 5000 * 2 ** (attempt - 1));
       console.warn(`aptos CLI rate-limited, retrying in ${delayMs / 1000}s (attempt ${attempt}/${maxAttempts}) ...`);
       await sleep(delayMs);
@@ -104,7 +107,8 @@ async function main() {
       function: `${packageAddress}::registry::initialize`,
       functionArguments: [
         accounts.gateway.accountAddress,
-        admin.accountAddress, // treasury: admin account for the demo
+        admin.accountAddress, // treasury doubles as admin here, which is why renewal cost routing is economically inert in the demo
+        // The three must total 10000; registry::initialize rejects any other sum.
         7000, // default_rent_bps
         2750, // default_creator_bps
         250, // default_protocol_bps

@@ -2,9 +2,8 @@ import { NextResponse } from "next/server";
 import { appendBlobEvent, loadDeployment, loadSigner, submitEntry } from "../../../lib/chain";
 
 /**
- * `top_up` is genuinely permissionless on chain: anyone can call it.
- * This build has no wallet connection, so the server signs with the admin demo key as a stand-in for "anyone" rather than the visiting browser's own wallet.
- * The important part, that the Move contract itself places no restriction on the caller, is real.
+ * `top_up` has no owner check on chain, so the demo key signing here really is acting as "anyone", not bypassing anything.
+ * A wallet connection would change who pays, not whether the call is allowed.
  */
 export async function POST(req: Request) {
   const { address, amount } = await req.json();

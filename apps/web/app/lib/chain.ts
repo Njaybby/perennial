@@ -1,10 +1,19 @@
 /**
- * Shared server-side chain access for the API routes.
- * apps/web is run as the Next.js cwd, so the repo root (where scripts/deploy.ts and scripts/seed.ts write .aptos/) is two levels up. See docs/RUNBOOK.md.
+ * Server-side chain access shared by the API routes.
+ * Next.js runs with apps/web as the cwd, so .aptos/ (written by the deploy and seed scripts at the repo root) is two levels up.
+ *
+ * Nothing here may be imported into a client component: it reads the demo signing keys off disk.
  */
 import fs from "node:fs";
 import path from "node:path";
-import { Account, Aptos, AptosConfig, Ed25519PrivateKey, Network } from "@aptos-labs/ts-sdk";
+import {
+  Account,
+  Aptos,
+  AptosConfig,
+  Ed25519PrivateKey,
+  type InputEntryFunctionData,
+  Network,
+} from "@aptos-labs/ts-sdk";
 
 export const ROOT = path.resolve(process.cwd(), "../..");
 
@@ -20,7 +29,7 @@ function readRootEnvKey(name: string): string | undefined {
 
 const apiKey = process.env.NODE_API_KEY ?? readRootEnvKey("NODE_API_KEY");
 
-// Devnet, not testnet, see scripts/lib/env.ts and docs/DECISIONS.md.
+// Read from the repo root rather than apps/web, so the dashboard and the scripts share one key and one rate limit.
 export const aptos = new Aptos(
   new AptosConfig({ network: Network.DEVNET, clientConfig: apiKey ? { API_KEY: apiKey } : undefined }),
 );
@@ -65,11 +74,41 @@ export function loadBlobs(): SeededBlob[] {
   return JSON.parse(fs.readFileSync(p, "utf8"));
 }
 
-/** Same .aptos/keys.json scripts/lib/accounts.ts writes. Server-side only, never sent to the client. */
+/**
+ * Loads a demo signing key from the same .aptos/keys.json the scripts write.
+ * This is what stands in for a wallet connection: the server signs on the visitor's behalf, which only works because these are throwaway devnet keys that happen to own the demo blobs.
+ */
 export function loadSigner(role: "admin" | "gateway" | "keeper" | "creator"): Account {
   const p = path.join(ROOT, ".aptos/keys.json");
   const keys = JSON.parse(fs.readFileSync(p, "utf8"));
   return Account.fromPrivateKey({ privateKey: new Ed25519PrivateKey(keys[role]) });
+}
+
+/** The raw shape `endowment::get` returns, before renaming. Every integer arrives as a string. */
+interface RawEndowmentView {
+  blob_id: string;
+  owner: string;
+  size_bytes: string;
+  created_at_secs: string;
+  expires_at_secs: string;
+  last_renewed_at_secs: string;
+  last_read_at_secs: string;
+  state: string;
+  balance: string;
+  creator_claimable: string;
+  lifetime_revenue: string;
+  lifetime_rent: string;
+  lifetime_creator: string;
+  lifetime_protocol: string;
+  lifetime_renewal_spend: string;
+  reads: string;
+  bytes_served: string;
+  renewals: string;
+  runway_secs: string;
+  target_runway_secs: string;
+  rent_bps: string;
+  creator_bps: string;
+  protocol_bps: string;
 }
 
 export interface BlobSummary {
@@ -102,8 +141,7 @@ export interface BlobSummary {
 export async function submitEntry(
   signer: Account,
   fn: `${string}::${string}::${string}`,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK's InputEntryFunctionData accepts a broad set of JS-friendly arg shapes; typing this narrowly would just re-describe the SDK's own union.
-  args: any[],
+  args: InputEntryFunctionData["functionArguments"],
 ): Promise<string> {
   const txn = await aptos.transaction.build.simple({
     sender: signer.accountAddress,
@@ -114,6 +152,7 @@ export async function submitEntry(
   return pending.hash;
 }
 
+/** Mirrors appendEvent in scripts/lib/eventLog.ts, kept separate so the web app doesn't reach into the scripts package for one function. */
 export function appendBlobEvent(entry: { blobAddress: string; type: string; txHash: string; atSecs: number }): void {
   const p = path.join(ROOT, ".aptos/events.json");
   const events = fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, "utf8")) : [];
@@ -121,8 +160,10 @@ export function appendBlobEvent(entry: { blobAddress: string; type: string; txHa
   fs.writeFileSync(p, JSON.stringify(events, null, 2));
 }
 
+/** Field names are the Move struct's, so this is also where snake_case from the chain becomes camelCase for the UI. */
 export async function fetchBlobSummary(packageAddress: string, endowmentAddress: string): Promise<BlobSummary> {
-  const [v]: any[] = await aptos.view({
+  // Numbers stay strings all the way to the browser: u64 and u128 values routinely exceed what a JS number holds exactly.
+  const [v] = await aptos.view<[RawEndowmentView]>({
     payload: {
       function: `${packageAddress}::endowment::get`,
       functionArguments: [endowmentAddress],
@@ -130,7 +171,7 @@ export async function fetchBlobSummary(packageAddress: string, endowmentAddress:
   });
   return {
     endowmentAddress,
-    blobId: v.blob_id as string, // vector<u8> serializes as a 0x-prefixed hex string already
+    blobId: v.blob_id, // vector<u8> arrives already 0x-prefixed
     owner: v.owner,
     sizeBytes: v.size_bytes,
     createdAtSecs: v.created_at_secs,

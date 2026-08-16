@@ -2,10 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { LIFECYCLE_STATES } from "@perennial/core";
 import { fmtDuration } from "../components/RunwayMeter";
 import { StatusBadge } from "../components/StatusBadge";
-
-const STATE_NAMES = ["Seeded", "Active", "Decaying", "Expired", "Dead", "Archived"];
 
 interface BlobRow {
   label: string;
@@ -103,7 +102,7 @@ export default function DecayPage() {
               </thead>
               <tbody className="text-body-sm divide-y divide-graphite">
                 {rows.map((b) => {
-                  const state = STATE_NAMES[b.state] ?? "Unknown";
+                  const state = LIFECYCLE_STATES[b.state] ?? "Unknown";
                   const pct = Number(b.targetRunwaySecs) > 0 ? Math.min(100, (Number(b.runwaySecs) / Number(b.targetRunwaySecs)) * 100) : 0;
                   const terminal = state === "Dead" || state === "Archived";
                   const canRevive = state === "Expired";

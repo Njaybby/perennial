@@ -1,5 +1,8 @@
-/** Thin helpers around the TS SDK for calling perennial's Move entry functions. */
-import { Account, Aptos, InputViewFunctionData } from "@aptos-labs/ts-sdk";
+/**
+ * Thin wrappers around the SDK for calling perennial's entry and view functions.
+ * Every call goes through the same retry policy, so no caller has to remember that devnet rate-limits.
+ */
+import { Account, Aptos, type InputEntryFunctionData, type InputViewFunctionData } from "@aptos-labs/ts-sdk";
 
 function isRateLimited(err: unknown): boolean {
   const status = (err as { status?: number })?.status;
@@ -10,9 +13,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Devnet's public fullnode rate-limits anonymous IPs.
-// A real keeper (apps/keeper, design-only in this build) would carry an API key and its own backoff policy.
-// This is the same idea, sized for a demo script hitting three blobs every tick.
+// Only retries 429s, so a genuine contract abort surfaces immediately instead of being retried eight times.
 async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 8): Promise<T> {
   let attempt = 0;
   for (;;) {
@@ -21,19 +22,19 @@ async function withRetry<T>(fn: () => Promise<T>, maxAttempts = 8): Promise<T> {
     } catch (err) {
       attempt += 1;
       if (attempt >= maxAttempts || !isRateLimited(err)) throw err;
-      // Capped, not pure exponential: devnet's public rate limit has shown sustained contention lasting minutes, not seconds.
+      // Capped rather than pure exponential, since the limit clears on a rolling window measured in minutes.
       const delayMs = Math.min(60_000, 2000 * 2 ** (attempt - 1));
       await sleep(delayMs);
     }
   }
 }
 
+/** Submits and waits for the transaction, so a caller that returns has the state change already committed. */
 export async function submit(
   aptos: Aptos,
   signer: Account,
   fn: `${string}::${string}::${string}`,
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- SDK's InputEntryFunctionData accepts a broad set of JS-friendly arg shapes; typing this narrowly would just re-describe the SDK's own union.
-  args: any[],
+  args: InputEntryFunctionData["functionArguments"],
 ): Promise<string> {
   return withRetry(async () => {
     const txn = await aptos.transaction.build.simple({

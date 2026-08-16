@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { LIFECYCLE_STATES } from "@perennial/core";
 import { RunwayMeter } from "./components/RunwayMeter";
 
-const STATE_NAMES = ["Seeded", "Active", "Decaying", "Expired", "Dead", "Archived"];
 const STATE_POLL_MS = 2000;
 const DEMO_POLL_MS = 1500;
 
@@ -82,7 +82,7 @@ export default function Page() {
         setDemoRunning(Boolean(json.running));
         setDemoLog(json.log ?? "");
       } catch {
-        // transient, next poll retries
+        // Swallowed deliberately: this polls every second and a half, so a transient failure resolves itself on the next tick.
       }
     }
     poll();
@@ -147,7 +147,7 @@ export default function Page() {
           {featured ? (
             <RunwayMeter
               label={featured.label}
-              state={STATE_NAMES[featured.state] ?? "Unknown"}
+              state={LIFECYCLE_STATES[featured.state] ?? "Unknown"}
               runwaySecs={Number(featured.runwaySecs)}
               targetRunwaySecs={Number(featured.targetRunwaySecs)}
               burnPerSec={Number(featured.runwaySecs) > 0 ? Math.floor(Number(featured.balance) / Number(featured.runwaySecs)) : 0}

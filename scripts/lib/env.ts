@@ -2,8 +2,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { Aptos, AptosConfig, Network } from "@aptos-labs/ts-sdk";
 
-// Minimal, dependency-free .env loader (no `dotenv` package needed for one key).
-// Devnet's public per-IP rate limit made this necessary, see docs/DECISIONS.md.
+// Minimal .env loader rather than a dependency, since the only variable that matters here is NODE_API_KEY.
+// Existing environment variables win, so an explicitly exported value isn't silently overridden by the file.
 function loadEnvFile(): void {
   const envPath = path.resolve(process.cwd(), ".env");
   if (!fs.existsSync(envPath)) return;
@@ -31,8 +31,9 @@ export interface Deployment {
 }
 
 /**
- * Devnet timestamps are real wall-clock time and the chain will not fast-forward, so these are minutes, not the intended production defaults (90 days / 24h / 7d).
- * Deployment parameter only, not a protocol change.
+ * Timing for the demo deployment, in minutes rather than the intended production scale of 90 days / 24h / 7d.
+ * Devnet runs on real wall-clock time and won't fast-forward, so a watchable demo needs a compressed lifecycle.
+ * These are deployment parameters passed to `registry::initialize`, not protocol constants.
  */
 export interface DemoConfig {
   renewalLeadSecs: number;
@@ -47,9 +48,8 @@ export interface DemoConfig {
 }
 
 export const DEMO_CONFIG: DemoConfig = {
-  // Widened from an initial 30s/60s/40s pass, after that run showed the hot and warm blobs expiring despite large balances.
-  // Devnet's public rate limit occasionally pushes a retry/backoff past a tight lead window, so a briefly rate-limited keeper misses the renewal even though the vault could easily afford it.
-  // See docs/DECISIONS.md.
+  // The renewal lead has to comfortably exceed how long a rate-limited retry can stall.
+  // At 30s a backed-off keeper missed the window entirely and well-funded blobs expired anyway, which says more about the keeper than the design, but it kills a demo either way.
   renewalLeadSecs: 120,
   maxRenewalPeriodSecs: 180,
   graceSecs: 90,
@@ -58,14 +58,16 @@ export const DEMO_CONFIG: DemoConfig = {
   keeperBountyBps: 200,
   minKeeperBounty: 50,
   protocolBps: 250,
-  pricePerBytePerSecScaled: "1000000000", // 1e9, tuned for a ~5000 byte demo blob; see scripts/demo.ts
+  // Scaled by pricing.move's PRICE_SCALE of 1e12, so this is 0.001 octa per byte per second.
+  // Chosen so a 5000 byte demo blob burns at a rate the eye can follow over a few minutes.
+  pricePerBytePerSecScaled: "1000000000",
 };
 
+/**
+ * Devnet rather than testnet: testnet's faucet now requires a browser-issued JWT no script can produce, while devnet's is still open.
+ * NODE_API_KEY is optional but strongly recommended, since it lifts the public per-IP rate limit that otherwise interrupts a demo run.
+ */
 export function aptosClient(): Aptos {
-  // Devnet, not testnet.
-  // Testnet's faucet now requires a browser JWT ("x-is-jwt") that no CLI/scripted flow can provide.
-  // Devnet's faucet is still open.
-  // NODE_API_KEY (from .env, an Aptos Build / geomi.dev key) lifts devnet's public per-IP rate limit. Optional but strongly recommended, see .env.example.
   const apiKey = process.env.NODE_API_KEY;
   const config = new AptosConfig({
     network: Network.DEVNET,

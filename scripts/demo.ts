@@ -1,10 +1,14 @@
 /**
- * Scripted end-to-end demo.
- * Seeds three blobs with different read profiles and runs them forward, real devnet time, compressed constants, until one dies and one goes self sustaining.
- * Plays the role of both gateway (crediting simulated read revenue) and keeper (renewing, sweeping state) by hand, since apps/gateway and apps/keeper are design-only for now.
+ * Scripted end-to-end demo against live devnet.
+ * Seeds three blobs with different read profiles and runs them forward until one dies and one pays for itself.
  *
- * Run: `pnpm demo` (after `pnpm run deploy`). Unattended, ~7 minutes.
+ * Stands in for the two services this build doesn't have.
+ * As gateway it credits simulated read revenue, as keeper it renews leases and sweeps lifecycle state.
+ * Both are done by hand here on a fixed tick rather than by anything autonomous.
+ *
+ * Run: `pnpm demo` (after `pnpm run deploy`). Unattended, ~7.5 minutes.
  */
+import { LIFECYCLE_STATES } from "@perennial/core";
 import { loadOrCreateAccounts } from "./lib/accounts.js";
 import { aptosClient, loadDeployment } from "./lib/env.js";
 import { submit, view } from "./lib/entry.js";
@@ -12,21 +16,24 @@ import { appendEvent } from "./lib/eventLog.js";
 import { seedDemoBlobs, type SeededBlob } from "./seed.js";
 
 const TICK_MS = 5000;
-const TOTAL_TICKS = 90; // ~7.5 minutes, sized for the widened timing constants in scripts/lib/env.ts
+// Long enough to outlast the lease and grace windows in scripts/lib/env.ts, so the cold blob actually reaches Dead before the run ends.
+const TOTAL_TICKS = 90;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** Past this, the value is `runway_secs`'s u64::MAX sentinel for a zero burn rate rather than a real duration. */
+const EFFECTIVELY_INFINITE_SECS = 3_000_000_000n;
+
 function fmtDuration(secs: bigint): string {
-  if (secs > 3_000_000_000n) return "∞";
+  if (secs > EFFECTIVELY_INFINITE_SECS) return "∞";
   const s = Number(secs);
   const m = Math.floor(s / 60);
   const r = s % 60;
   return `${m}m${String(r).padStart(2, "0")}s`;
 }
 
-const STATE_NAMES = ["Seeded", "Active", "Decaying", "Expired", "Dead", "Archived"];
 
 interface EndowmentSnapshot {
   balance: bigint;
@@ -37,8 +44,9 @@ interface EndowmentSnapshot {
   runwaySecs: bigint;
 }
 
+/** Every integer field comes back as a string, so each one is parsed as a bigint rather than risking precision loss on u128 totals. */
 async function fetchSnapshot(aptos: ReturnType<typeof aptosClient>, packageAddress: string, endowmentAddr: string): Promise<EndowmentSnapshot> {
-  const [v]: any[] = await view(aptos, {
+  const [v] = await view<[Record<string, string>]>(aptos, {
     function: `${packageAddress}::endowment::get`,
     functionArguments: [endowmentAddr],
   });
@@ -54,7 +62,7 @@ async function fetchSnapshot(aptos: ReturnType<typeof aptosClient>, packageAddre
 
 function logRow(blob: SeededBlob, snap: EndowmentSnapshot): void {
   console.log(
-    `  ${blob.label.padEnd(5)} state=${STATE_NAMES[snap.state].padEnd(9)} ` +
+    `  ${blob.label.padEnd(5)} state=${LIFECYCLE_STATES[snap.state].padEnd(9)} ` +
       `balance=${snap.balance.toString().padStart(6)} ` +
       `runway=${fmtDuration(snap.runwaySecs).padStart(7)} ` +
       `renewals=${snap.renewals} ` +
@@ -83,6 +91,8 @@ async function main() {
       const { creditEveryTicks, creditAmount } = blob.profile;
       if (creditEveryTicks !== null && tick % creditEveryTicks === 0) {
         try {
+          // Args are (blob, gross revenue, bytes served, read count).
+          // Bytes are a plausible stand-in rather than a measurement; only the revenue figure drives the economics.
           const hash = await submit(aptos, accounts.gateway, `${pkg}::endowment::credit`, [
             blob.endowmentAddress,
             creditAmount,
@@ -96,8 +106,7 @@ async function main() {
       }
     }
 
-    // Anyone can top up.
-    // Demonstrating that on "warm" partway through.
+    // Demonstrates that top_up has no owner check: admin funds a blob it doesn't own, and the contract accepts it.
     if (tick === 20) {
       const warm = blobs.find((b) => b.label === "warm")!;
       const hash = await submit(aptos, accounts.admin, `${pkg}::endowment::top_up`, [warm.endowmentAddress, 300]);
@@ -109,7 +118,7 @@ async function main() {
       try {
         await submit(aptos, accounts.keeper, `${pkg}::endowment::sweep`, [blob.endowmentAddress]);
       } catch {
-        // sweep is permissionless best-effort; ignore transient failures
+        // Sweep only records transitions that already happened, so a missed call costs nothing but a later state update.
       }
 
       const shouldRenew = await view<[boolean]>(aptos, {

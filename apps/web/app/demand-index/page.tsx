@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { LIFECYCLE_STATES } from "@perennial/core";
 import { fmtDuration } from "../components/RunwayMeter";
 import { StatusBadge } from "../components/StatusBadge";
 
-const STATE_NAMES = ["Seeded", "Active", "Decaying", "Expired", "Dead", "Archived"];
 const SORTS = ["Demand", "Runway", "Revenue", "Newest"] as const;
 type Sort = (typeof SORTS)[number];
 
@@ -135,7 +135,7 @@ export default function DemandIndexPage() {
                       </div>
                     </td>
                     <td className="py-7 px-6 text-center">
-                      <StatusBadge state={STATE_NAMES[b.state] ?? "Unknown"} />
+                      <StatusBadge state={LIFECYCLE_STATES[b.state] ?? "Unknown"} />
                     </td>
                   </tr>
                 );

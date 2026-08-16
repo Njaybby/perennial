@@ -1,6 +1,9 @@
 /**
- * Named local keypairs for the demo deployment: admin, gateway, keeper, creator.
- * Persisted to .aptos/keys.json so `pnpm demo` can be re-run after a devnet wipe without losing which address is which role, since only the on-chain state is disposable.
+ * The four throwaway devnet keypairs the demo runs as.
+ * Admin owns the package and the treasury, gateway is the only address allowed to credit revenue, keeper renews leases for the bounty, and creator owns the seeded blobs.
+ *
+ * Persisted to .aptos/keys.json so a re-run keeps the same address in each role.
+ * These fund from a public faucet and are worthless off devnet, but the file is still written owner-only.
  */
 import fs from "node:fs";
 import path from "node:path";

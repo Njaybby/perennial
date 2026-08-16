@@ -1,10 +1,12 @@
-/// The heart of the system, one object per blob, holding a vault funded by read revenue that pays for its own lease renewal.
-/// Simplified for the 36 hour build per docs/DECISIONS.md.
-/// `credit` stands in for what `receipts::finalize_epoch` would do once the Merkle/fraud-proof epoch pipeline exists (design only for now).
-/// It is gated to a single registered gateway address.
-/// `renew` is self-contained on Aptos.
-/// It debits the vault and advances `expires_at_secs` directly, standing in for the atomic inline call into Shelby's payment function that a real integration would make, which isn't reachable yet.
-/// The settlement asset is APT, via its paired fungible asset at 0xA, standing in for ShelbyUSD until that FA address is known.
+/// One object per blob, holding the vault that pays for that blob's own storage lease.
+/// Revenue flows in through `credit` and out through `renew`, and a blob lives exactly as long as the first outpaces the second.
+///
+/// Two things here stand in for pieces that need Shelby access to build properly.
+/// `credit` trusts a single registered gateway instead of settling against proven read receipts.
+/// `renew` advances `expires_at_secs` locally instead of calling Shelby's lease extension, and sends the cost to treasury.
+/// Both are flagged at their call sites and in docs/THREATS.md.
+///
+/// Settlement is in APT via its paired fungible asset at 0xA, standing in for ShelbyUSD.
 module perennial::endowment {
     use std::signer;
     use aptos_framework::object::{Self, Object, ExtendRef, TransferRef};
@@ -16,6 +18,9 @@ module perennial::endowment {
     use perennial::registry;
     use perennial::pricing;
 
+    /// Decaying means the runway fell below the renewal lead while the lease is still valid.
+    /// Expired means the lease itself lapsed, leaving `grace_secs` to recover before Dead.
+    /// Dead and Archived are terminal; everything before them can still be revived by revenue or a top up.
     const STATE_SEEDED: u8 = 0;
     const STATE_ACTIVE: u8 = 1;
     const STATE_DECAYING: u8 = 2;
@@ -128,10 +133,14 @@ module perennial::endowment {
         primary_fungible_store::balance(addr, apt_metadata())
     }
 
+    /// Creator earnings accumulate in the same fungible store as the vault, so every spending path has to net them out first.
+    /// Without this a renewal would quietly pay itself with money the creator has already earned.
     fun spendable_balance(e: &Endowment, blob_addr: address): u64 {
         balance_of(blob_addr) - e.creator_claimable
     }
 
+    /// Creates a blob's endowment and funds it with the creator's opening deposit.
+    /// Everything after this point is meant to be paid for by the blob's own readers.
     public entry fun seed(
         creator: &signer,
         blob_id: vector<u8>,
@@ -147,12 +156,15 @@ module perennial::endowment {
         assert!(endowment_amount >= registry::min_endowment(), errors::below_min_endowment());
         assert!(target_runway_secs >= registry::renewal_lead_secs() * 2, errors::target_runway_too_low());
 
+        // All three zero means "use the registry defaults", not an actual 0/0/0 split, which make_split would reject anyway.
         let (rb, cb, pb) = if (rent_bps == 0 && creator_bps == 0 && protocol_bps == 0) {
             registry::split_bps(&registry::default_split())
         } else {
             registry::split_bps(&registry::make_split(rent_bps, creator_bps, protocol_bps))
         };
 
+        // Created under the registry's resource account rather than `creator`, so the object address stays a pure function of blob_id.
+        // See registry::endowment_address.
         let resource_signer = registry::resource_signer();
         let constructor_ref = object::create_named_object(&resource_signer, blob_id);
         let obj_signer = object::generate_signer(&constructor_ref);
@@ -198,6 +210,8 @@ module perennial::endowment {
         });
     }
 
+    /// Anyone can extend anyone's blob.
+    /// There is no owner check here on purpose: keeping data alive is a public good, and the payer gets nothing back for it.
     public entry fun top_up(payer: &signer, blob_addr: address, amount: u64) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         let fa = primary_fungible_store::withdraw(payer, apt_metadata(), amount);
@@ -206,6 +220,8 @@ module perennial::endowment {
         let now = timestamp::now_seconds();
         let new_runway = pricing::runway_secs(@perennial, spendable_balance(e, blob_addr), e.size_bytes);
 
+        // Topping up during grace is the recovery path for an expired blob.
+        // It only revives the blob if the money actually buys back enough runway to be worth renewing.
         if (e.state == STATE_EXPIRED) {
             assert!(now <= e.expires_at_secs + registry::grace_secs(), errors::grace_elapsed());
             if (new_runway >= registry::renewal_lead_secs()) {
@@ -221,6 +237,8 @@ module perennial::endowment {
         });
     }
 
+    /// Books read revenue against a blob and splits it between rent, creator and protocol.
+    /// The gateway is trusted to report honestly here, which is the weakest assumption in the system. See docs/THREATS.md.
     public entry fun credit(gateway: &signer, blob_addr: address, gross_amount: u64, bytes: u64, reads: u64) acquires Endowment {
         assert!(registry::is_gateway(signer::address_of(gateway)), errors::unauthorized_gateway());
         let e = borrow_global_mut<Endowment>(blob_addr);
@@ -228,8 +246,9 @@ module perennial::endowment {
         let runway = pricing::runway_secs(@perennial, spendable_balance(e, blob_addr), e.size_bytes);
         let starved = runway < e.target_runway_secs;
 
-        // rent_bps is intentionally unused.
-        // Rent is whatever's left after protocol and creator are taken, so dust rounds into rent, never out.
+        // Below target runway the owner's configured split is overridden and the creator's cut drops to zero.
+        // This is what makes an endowment self-correcting: a blob that falls behind stops paying its creator until it has caught back up.
+        // rent_bps is destructured but unused on purpose, because rent is whatever survives the other two, so rounding dust falls into rent rather than out of the vault.
         let (_rent_bps, creator_bps, protocol_bps) = if (starved) {
             let p_bps = registry::protocol_bps();
             (10_000 - p_bps, 0, p_bps)
@@ -241,11 +260,14 @@ module perennial::endowment {
         let creator_amt = (gross_amount * creator_bps) / 10_000;
         let rent_amt = gross_amount - protocol_amt - creator_amt;
 
+        // Revenue is paid from the gateway's own balance, so a gateway crediting a blob is spending real money, not minting a number.
+        // That bounds the damage a compromised gateway can do, though it does not prevent misattribution. See docs/THREATS.md.
         let fa = primary_fungible_store::withdraw(gateway, apt_metadata(), gross_amount);
         if (protocol_amt > 0) {
             let protocol_fa = fungible_asset::extract(&mut fa, protocol_amt);
             primary_fungible_store::deposit(registry::treasury_addr(), protocol_fa);
         };
+        // Rent and the creator's cut both land in the object's store; only `creator_claimable` distinguishes them.
         primary_fungible_store::deposit(blob_addr, fa);
 
         e.creator_claimable = e.creator_claimable + creator_amt;
@@ -271,6 +293,8 @@ module perennial::endowment {
         });
     }
 
+    /// Buys the blob more time out of its own vault, paying the caller a bounty for doing it.
+    /// Permissionless and unscheduled: a funded blob still dies if nobody calls this before the lease lapses.
     public entry fun renew(keeper: &signer, blob_addr: address, requested_duration_secs: u64) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         let now = timestamp::now_seconds();
@@ -285,6 +309,8 @@ module perennial::endowment {
         let duration = if (requested_duration_secs > max_period) { max_period } else { requested_duration_secs };
 
         let cost = pricing::cost(@perennial, e.size_bytes, duration);
+        // A percentage bounty on a small blob rounds down to nearly nothing, and nobody spends gas to earn nothing.
+        // The floor is what keeps renewal worth calling at every blob size, since renewal only happens if someone chooses to call it.
         let bounty = {
             let b = (cost * registry::keeper_bounty_bps()) / 10_000;
             let min_b = registry::min_keeper_bounty();
@@ -298,9 +324,8 @@ module perennial::endowment {
         let fa = primary_fungible_store::withdraw(&obj_signer, apt_metadata(), total_cost);
         let bounty_fa = fungible_asset::extract(&mut fa, bounty);
         primary_fungible_store::deposit(signer::address_of(keeper), bounty_fa);
-        // `fa` now holds `cost`, the payment that would go to Shelby's lease extension.
-        // Shelby isn't reachable yet, so it's routed to treasury rather than burned.
-        // See module doc comment.
+        // `fa` now holds `cost`, which under a real integration would pay Shelby to extend the lease.
+        // Shelby isn't reachable yet, so it goes to treasury instead, which keeps the accounting honest without pretending the payment happened.
         primary_fungible_store::deposit(registry::treasury_addr(), fa);
 
         let old_expiry = e.expires_at_secs;
@@ -321,10 +346,13 @@ module perennial::endowment {
         });
     }
 
+    /// Moves a blob's lifecycle state to match what its own numbers and the clock already imply.
+    /// Permissionless because it can only ever record a transition that has already happened, never cause one.
     public entry fun sweep(_anyone: &signer, blob_addr: address) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         let now = timestamp::now_seconds();
 
+        // The three checks cascade on purpose, so a blob nobody has touched since well before its grace window reaches Dead in a single call.
         if (e.state == STATE_ACTIVE || e.state == STATE_SEEDED) {
             let runway = pricing::runway_secs(@perennial, spendable_balance(e, blob_addr), e.size_bytes);
             if (runway < registry::renewal_lead_secs()) {
@@ -350,6 +378,8 @@ module perennial::endowment {
         };
     }
 
+    /// Withdraws the creator's accumulated share.
+    /// Zeroed before the transfer so a re-entrant claim would find nothing left to take.
     public entry fun claim_creator(owner: &signer, blob_addr: address) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         assert!(signer::address_of(owner) == e.owner, errors::not_owner());
@@ -362,10 +392,13 @@ module perennial::endowment {
         event::emit(CreatorClaimed { blob_id: e.blob_id, endowment: blob_addr, owner: e.owner, amount });
     }
 
+    /// Closes the position and returns everything left.
+    /// Deliberately allowed from any non-archived state, including Dead, so an owner can always recover a blob's remaining funds.
     public entry fun archive(owner: &signer, blob_addr: address) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         assert!(signer::address_of(owner) == e.owner, errors::not_owner());
         assert!(e.state != STATE_ARCHIVED, errors::wrong_state());
+        // The full store, not `spendable_balance`: unclaimed creator earnings are refunded too, since they are owed to the same address either way.
         let balance = balance_of(blob_addr);
         e.creator_claimable = 0;
         let from = e.state;
@@ -380,6 +413,7 @@ module perennial::endowment {
         event::emit(EndowmentArchived { blob_id: e.blob_id, endowment: blob_addr, owner: e.owner, refunded: balance });
     }
 
+    /// Only affects revenue credited after this point, never retroactively, so an owner cannot reach back for rent already banked.
     public entry fun set_split(owner: &signer, blob_addr: address, rent_bps: u64, creator_bps: u64, protocol_bps: u64) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         assert!(signer::address_of(owner) == e.owner, errors::not_owner());
@@ -392,10 +426,12 @@ module perennial::endowment {
     public entry fun set_target_runway(owner: &signer, blob_addr: address, secs: u64) acquires Endowment {
         let e = borrow_global_mut<Endowment>(blob_addr);
         assert!(signer::address_of(owner) == e.owner, errors::not_owner());
+        // The floor stops an owner from setting a target so low the blob is never considered starved, which would disable the rent-first override entirely.
         assert!(secs >= registry::renewal_lead_secs() * 2, errors::target_runway_too_low());
         e.target_runway_secs = secs;
     }
 
+    /// `balance` in the returned view is the spendable balance, with creator earnings already excluded.
     #[view]
     public fun get(blob_addr: address): EndowmentView acquires Endowment {
         let e = borrow_global<Endowment>(blob_addr);
@@ -440,6 +476,8 @@ module perennial::endowment {
         pricing::runway_secs(@perennial, spendable_balance(e, blob_addr), e.size_bytes)
     }
 
+    /// What a keeper polls to decide whether calling `renew` would succeed and be paid for.
+    /// Prices the worst case, a full-length renewal, so a true answer stays true for any shorter duration.
     #[view]
     public fun should_renew(blob_addr: address): bool acquires Endowment {
         let e = borrow_global<Endowment>(blob_addr);

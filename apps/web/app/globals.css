@@ -93,8 +93,13 @@ body {
   animation: delta-fade 2s ease-out forwards;
 }
 
+/* The runway meter animates continuously, so honour a reduced-motion preference for both the bar and the delta flash. */
 @media (prefers-reduced-motion: reduce) {
   .transition-width {
     transition: none !important;
+  }
+
+  .animate-delta {
+    animation: none;
   }
 }
